@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -16,7 +17,6 @@ var (
 )
 
 func prepareSqlite3Engine() error {
-	//if testEngine == nil {
 	os.Remove("./test.db")
 	var err error
 	testEngine, err = NewEngine("sqlite3", "./test.db")
@@ -24,7 +24,6 @@ func prepareSqlite3Engine() error {
 		return err
 	}
 	testEngine.ShowSQL(*showSQL)
-	//}
 	return nil
 }
 
@@ -41,6 +40,7 @@ func prepareMysqlEngine() error {
 			return err
 		}
 	}
+	testEngine.ShowSQL(*showSQL)
 	return nil
 }
 
@@ -72,6 +72,8 @@ func TestMain(m *testing.M) {
 }
 
 func TestPing(t *testing.T) {
+	assert.NoError(t, prepareEngine())
+
 	if err := testEngine.Ping(); err != nil {
 		t.Fatal(err)
 	}
