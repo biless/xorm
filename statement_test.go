@@ -22,11 +22,9 @@ var colStrTests = []struct {
 }
 
 func TestColumnsStringGeneration(t *testing.T) {
-
 	var statement *Statement
 
 	for ndx, testCase := range colStrTests {
-
 		statement = createTestStatement()
 
 		if testCase.omitColumn != "" {
@@ -39,7 +37,6 @@ func TestColumnsStringGeneration(t *testing.T) {
 		}
 
 		actual := statement.genColumnStr()
-
 		if actual != testCase.expected {
 			t.Errorf("[test #%d] Unexpected columns string:\nwant:\t%s\nhave:\t%s", ndx, testCase.expected, actual)
 		}

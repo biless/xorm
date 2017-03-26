@@ -23,6 +23,8 @@ func prepareSqlite3Engine() error {
 			return err
 		}
 		testEngine.ShowSQL(*showSQL)
+		testEngine.QuoteMode = QuoteAddAlways
+		//testEngine.QuoteMode = QuoteNoAdd
 	}
 	return nil
 }
