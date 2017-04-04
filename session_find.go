@@ -62,7 +62,7 @@ func (session *Session) Find(rowsSlicePtr interface{}, condiBean ...interface{})
 			var err error
 			autoCond, err = session.Statement.buildConds(table, condiBean[0], true, true, false, true, addedTableName)
 			if err != nil {
-				panic(err)
+				return err
 			}
 		} else {
 			// !oinume! Add "<col> IS NULL" to WHERE whatever condiBean is given.
@@ -171,9 +171,8 @@ func (session *Session) noCacheFind(table *core.Table, containerValue reflect.Va
 
 	var newElemFunc func(fields []string) reflect.Value
 	elemType := containerValue.Type().Elem()
-	var isPointer bool
-	if elemType.Kind() == reflect.Ptr {
-		isPointer = true
+	var isPointer = elemType.Kind() == reflect.Ptr
+	if isPointer {
 		elemType = elemType.Elem()
 	}
 	if elemType.Kind() == reflect.Ptr {
