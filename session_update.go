@@ -236,7 +236,9 @@ func (session *Session) Update(bean interface{}, condiBean ...interface{}) (int6
 		colNames = append(colNames, session.Engine.Quote(v.colName)+" = "+v.expr)
 	}
 
-	session.Statement.processIDParam()
+	if err = session.Statement.processIDParam(); err != nil {
+		return 0, err
+	}
 
 	var autoCond builder.Cond
 	if !session.Statement.noAutoCondition && len(condiBean) > 0 {
@@ -267,7 +269,11 @@ func (session *Session) Update(bean interface{}, condiBean ...interface{}) (int6
 		colNames = append(colNames, session.Engine.Quote(table.Version)+" = "+session.Engine.Quote(table.Version)+" + 1")
 	}
 
-	condSQL, condArgs, _ = builder.ToSQL(cond)
+	condSQL, condArgs, err = builder.ToSQL(cond)
+	if err != nil {
+		return 0, err
+	}
+
 	if len(condSQL) > 0 {
 		condSQL = "WHERE " + condSQL
 	}
@@ -285,7 +291,10 @@ func (session *Session) Update(bean interface{}, condiBean ...interface{}) (int6
 			tempCondSQL := condSQL + fmt.Sprintf(" LIMIT %d", st.LimitN)
 			cond = cond.And(builder.Expr(fmt.Sprintf("rowid IN (SELECT rowid FROM %v %v)",
 				session.Engine.Quote(session.Statement.TableName()), tempCondSQL), condArgs...))
-			condSQL, condArgs, _ = builder.ToSQL(cond)
+			condSQL, condArgs, err = builder.ToSQL(cond)
+			if err != nil {
+				return 0, err
+			}
 			if len(condSQL) > 0 {
 				condSQL = "WHERE " + condSQL
 			}
@@ -293,12 +302,31 @@ func (session *Session) Update(bean interface{}, condiBean ...interface{}) (int6
 			tempCondSQL := condSQL + fmt.Sprintf(" LIMIT %d", st.LimitN)
 			cond = cond.And(builder.Expr(fmt.Sprintf("CTID IN (SELECT CTID FROM %v %v)",
 				session.Engine.Quote(session.Statement.TableName()), tempCondSQL), condArgs...))
-			condSQL, condArgs, _ = builder.ToSQL(cond)
+			condSQL, condArgs, err = builder.ToSQL(cond)
+			if err != nil {
+				return 0, err
+			}
+
 			if len(condSQL) > 0 {
 				condSQL = "WHERE " + condSQL
 			}
 		} else if st.Engine.dialect.DBType() == core.MSSQL {
-			top = fmt.Sprintf("top (%d) ", st.LimitN)
+			if st.OrderStr != "" && st.Engine.dialect.DBType() == core.MSSQL &&
+				table != nil && len(table.PrimaryKeys) == 1 {
+				cond = builder.Expr(fmt.Sprintf("%s IN (SELECT TOP (%d) %s FROM %v%v)",
+					table.PrimaryKeys[0], st.LimitN, table.PrimaryKeys[0],
+					session.Engine.Quote(session.Statement.TableName()), condSQL), condArgs...)
+
+				condSQL, condArgs, err = builder.ToSQL(cond)
+				if err != nil {
+					return 0, err
+				}
+				if len(condSQL) > 0 {
+					condSQL = "WHERE " + condSQL
+				}
+			} else {
+				top = fmt.Sprintf("TOP (%d) ", st.LimitN)
+			}
 		}
 	}
 

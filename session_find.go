@@ -66,7 +66,7 @@ func (session *Session) Find(rowsSlicePtr interface{}, condiBean ...interface{})
 			var err error
 			autoCond, err = session.Statement.buildConds(table, condiBean[0], true, true, false, true, addedTableName)
 			if err != nil {
-				panic(err)
+				return err
 			}
 		} else {
 			// !oinume! Add "<col> IS NULL" to WHERE whatever condiBean is given.
@@ -80,17 +80,15 @@ func (session *Session) Find(rowsSlicePtr interface{}, condiBean ...interface{})
 					}
 					colName = session.Engine.Quote(nm) + "." + colName
 				}
-				if session.Engine.dialect.DBType() == core.MSSQL {
-					autoCond = builder.IsNull{colName}
-				} else {
-					autoCond = builder.IsNull{colName}.Or(builder.Eq{colName: "0001-01-01 00:00:00"})
-				}
+
+				autoCond = session.Engine.CondDeleted(colName)
 			}
 		}
 	}
 
 	var sqlStr string
 	var args []interface{}
+	var err error
 	if session.Statement.RawSQL == "" {
 		if len(session.Statement.TableName()) <= 0 {
 			return ErrTableNotFound
@@ -122,10 +120,16 @@ func (session *Session) Find(rowsSlicePtr interface{}, condiBean ...interface{})
 			}
 		}
 
-		condSQL, condArgs, _ := builder.ToSQL(session.Statement.cond.And(autoCond))
+		condSQL, condArgs, err := builder.ToSQL(session.Statement.cond.And(autoCond))
+		if err != nil {
+			return err
+		}
 
 		args = append(session.Statement.joinArgs, condArgs...)
-		sqlStr = session.Statement.genSelectSQL(columnStr, condSQL)
+		sqlStr, err = session.Statement.genSelectSQL(columnStr, condSQL)
+		if err != nil {
+			return err
+		}
 		// for mssql and use limit
 		qs := strings.Count(sqlStr, "?")
 		if len(args)*2 == qs {
@@ -136,7 +140,6 @@ func (session *Session) Find(rowsSlicePtr interface{}, condiBean ...interface{})
 		args = session.Statement.RawParams
 	}
 
-	var err error
 	if session.canCache() {
 		if cacher := session.Engine.getCacher2(table); cacher != nil &&
 			!session.Statement.IsDistinct &&

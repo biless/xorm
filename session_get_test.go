@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-xorm/core"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -44,6 +45,15 @@ func TestGetVar(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, true, has)
 	assert.Equal(t, 28, age)
+
+	var age2 int64
+	has, err = testEngine.Table("get_var").Cols("age").
+		Where("age > ?", 20).
+		And("age < ?", 30).
+		Get(&age2)
+	assert.NoError(t, err)
+	assert.Equal(t, true, has)
+	assert.EqualValues(t, 28, age2)
 
 	var money float64
 	has, err = testEngine.Table("get_var").Cols("money").Get(&money)
@@ -98,4 +108,66 @@ func TestGetVar(t *testing.T) {
 	v4, err := convertFloat(valuesSliceInter[3])
 	assert.NoError(t, err)
 	assert.Equal(t, "1.5", fmt.Sprintf("%v", v4))
+}
+
+func TestGetStruct(t *testing.T) {
+	assert.NoError(t, prepareEngine())
+
+	type UserinfoGet struct {
+		Uid   int `xorm:"pk autoincr"`
+		IsMan bool
+	}
+
+	assert.NoError(t, testEngine.Sync(new(UserinfoGet)))
+
+	var err error
+	if testEngine.dialect.DBType() == core.MSSQL {
+		_, err = testEngine.Exec("SET IDENTITY_INSERT userinfo_get ON")
+		assert.NoError(t, err)
+	}
+	cnt, err := testEngine.Insert(&UserinfoGet{Uid: 2})
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, cnt)
+
+	user := UserinfoGet{Uid: 2}
+	has, err := testEngine.Get(&user)
+	assert.NoError(t, err)
+	assert.True(t, has)
+
+	type NoIdUser struct {
+		User   string `xorm:"unique"`
+		Remain int64
+		Total  int64
+	}
+
+	assert.NoError(t, testEngine.Sync(&NoIdUser{}))
+
+	userCol := testEngine.ColumnMapper.Obj2Table("User")
+	_, err = testEngine.Where("`"+userCol+"` = ?", "xlw").Delete(&NoIdUser{})
+	assert.NoError(t, err)
+
+	cnt, err = testEngine.Insert(&NoIdUser{"xlw", 20, 100})
+	assert.NoError(t, err)
+	assert.EqualValues(t, 1, cnt)
+
+	noIdUser := new(NoIdUser)
+	has, err = testEngine.Where("`"+userCol+"` = ?", "xlw").Get(noIdUser)
+	assert.NoError(t, err)
+	assert.True(t, has)
+}
+
+func TestGetSlice(t *testing.T) {
+	assert.NoError(t, prepareEngine())
+
+	type UserinfoSlice struct {
+		Uid   int `xorm:"pk autoincr"`
+		IsMan bool
+	}
+
+	assertSync(t, new(UserinfoSlice))
+
+	var users []UserinfoSlice
+	has, err := testEngine.Get(&users)
+	assert.False(t, has)
+	assert.Error(t, err)
 }

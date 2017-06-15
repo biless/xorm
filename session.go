@@ -48,6 +48,8 @@ type Session struct {
 	//beforeSQLExec func(string, ...interface{})
 	lastSQL     string
 	lastSQLArgs []interface{}
+
+	err error
 }
 
 // Clone copy all the session's content and return a new session
@@ -344,15 +346,6 @@ func (session *Session) row2Bean(rows *core.Rows, fields []string, fieldsCount i
 		}
 	}()
 
-	dbTZ := session.Engine.DatabaseTZ
-	if dbTZ == nil {
-		if session.Engine.dialect.DBType() == core.SQLITE {
-			dbTZ = time.UTC
-		} else {
-			dbTZ = time.Local
-		}
-	}
-
 	var tempMap = make(map[string]int)
 	var pk core.PK
 	for ii, key := range fields {
@@ -528,11 +521,9 @@ func (session *Session) row2Bean(rows *core.Rows, fields []string, fieldsCount i
 				}
 			case reflect.Struct:
 				if fieldType.ConvertibleTo(core.TimeType) {
-					var tz *time.Location
-					if col.TimeZone == nil {
-						tz = session.Engine.TZLocation
-					} else {
-						tz = col.TimeZone
+					dbTZ := session.Engine.DatabaseTZ
+					if col.TimeZone != nil {
+						dbTZ = col.TimeZone
 					}
 
 					if rawValueType == core.TimeType {
@@ -548,14 +539,13 @@ func (session *Session) row2Bean(rows *core.Rows, fields []string, fieldsCount i
 								t.Minute(), t.Second(), t.Nanosecond(), dbTZ)
 						}
 
-						// !nashtsai! convert to engine location
-						t = t.In(tz)
+						t = t.In(session.Engine.TZLocation)
 						fieldValue.Set(reflect.ValueOf(t).Convert(fieldType))
 					} else if rawValueType == core.IntType || rawValueType == core.Int64Type ||
 						rawValueType == core.Int32Type {
 						hasAssigned = true
 
-						t := time.Unix(vv.Int(), 0).In(tz)
+						t := time.Unix(vv.Int(), 0).In(session.Engine.TZLocation)
 						fieldValue.Set(reflect.ValueOf(t).Convert(fieldType))
 					} else {
 						if d, ok := vv.Interface().([]uint8); ok {
@@ -577,7 +567,7 @@ func (session *Session) row2Bean(rows *core.Rows, fields []string, fieldsCount i
 								fieldValue.Set(reflect.ValueOf(t).Convert(fieldType))
 							}
 						} else {
-							panic(fmt.Sprintf("rawValueType is %v, value is %v", rawValueType, vv.Interface()))
+							return nil, fmt.Errorf("rawValueType is %v, value is %v", rawValueType, vv.Interface())
 						}
 					}
 				} else if nulVal, ok := fieldValue.Addr().Interface().(sql.Scanner); ok {
@@ -617,7 +607,7 @@ func (session *Session) row2Bean(rows *core.Rows, fields []string, fieldsCount i
 
 					hasAssigned = true
 					if len(table.PrimaryKeys) != 1 {
-						panic("unsupported non or composited primary key cascade")
+						return nil, errors.New("unsupported non or composited primary key cascade")
 					}
 					var pk = make(core.PK, len(table.PrimaryKeys))
 					pk[0], err = asKind(vv, rawValueType)
@@ -632,7 +622,7 @@ func (session *Session) row2Bean(rows *core.Rows, fields []string, fieldsCount i
 						structInter := reflect.New(fieldValue.Type())
 						newsession := session.Engine.NewSession()
 						defer newsession.Close()
-						has, err := newsession.Id(pk).NoCascade().Get(structInter.Interface())
+						has, err := newsession.ID(pk).NoCascade().Get(structInter.Interface())
 						if err != nil {
 							return nil, err
 						}
